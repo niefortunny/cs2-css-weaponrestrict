@@ -1,0 +1,17 @@
+# Changelog
+
+## [1.0.0] - 2026-09-27
+
+Initial CS2 release, based on the [SourceMod plugin](https://github.com/Ayrton09/umbrella-weapon-restrict) for CS:S/CS:GO.
+
+### Added
+- Per-team weapon limits for every buyable weapon, grenade and armor, managed by item definition index.
+- Weapon groups (pistols, smgs, shotguns, rifles, snipers, grenades, armor) in commands and the menu.
+- Buys and pickups refused through CS2's own acquire check, before any money is taken.
+- Weapons over a lowered limit removed right away and at every round start.
+- Optional limits that follow the number of players on the server.
+- WASD center menu organized by weapon group and color coded, with custom limits typed in chat and the player held in place while it is open.
+- `css_restrict`, `css_unrestrict`, `css_restrictmenu`, `css_wrmenu`, `css_remove_restricted`, `css_wr_list` and `css_wr_reload` commands.
+- Admin immunity and configurable admin permission (flag or group).
+- Chat notices with anti-spam and the game's "can't buy" sound.
+- Translations in 9 languages: English, Spanish, Portuguese, Chinese, Russian, French, German, Turkish, Polish.
