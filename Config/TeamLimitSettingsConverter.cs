@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using UmbrellaWeaponRestrict.Core;
 
 namespace UmbrellaWeaponRestrict.Config;
 
@@ -16,7 +17,7 @@ public sealed class TeamLimitSettingsConverter : JsonConverter<UmbrellaWeaponRes
             throw new JsonException("A weapon limit must look like { \"T\": -1, \"CT\": -1 }.");
         }
 
-        UmbrellaWeaponRestrictConfig.TeamLimitSettings settings = new();
+        UmbrellaWeaponRestrictConfig.TeamLimitSettings settings = new() { T = null, CT = null };
         while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
         {
             string name = reader.GetString() ?? string.Empty;
@@ -40,6 +41,8 @@ public sealed class TeamLimitSettingsConverter : JsonConverter<UmbrellaWeaponRes
 
     public override void Write(Utf8JsonWriter writer, UmbrellaWeaponRestrictConfig.TeamLimitSettings value, JsonSerializerOptions options)
     {
-        writer.WriteRawValue(string.Create(CultureInfo.InvariantCulture, $"{{ \"T\": {value.T}, \"CT\": {value.CT} }}"));
+        int t = value.T ?? RestrictionState.Unlimited;
+        int ct = value.CT ?? RestrictionState.Unlimited;
+        writer.WriteRawValue(string.Create(CultureInfo.InvariantCulture, $"{{ \"T\": {t}, \"CT\": {ct} }}"));
     }
 }

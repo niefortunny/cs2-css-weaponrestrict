@@ -26,9 +26,10 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
     private const float JustCreatedSeconds = 0.05f;
     private const double ChatLimitTimeoutSeconds = 30;
     private const int MaxSlots = 64;
+    private const int MaxListLineLength = 90;
 
     public override string ModuleName => "Umbrella Weapon Restrict";
-    public override string ModuleVersion => "1.0.1";
+    public override string ModuleVersion => "1.0.2";
     public override string ModuleAuthor => "Ayrton09";
     public override string ModuleDescription => "Weapon restrictions by team, weapon group and player count";
 
@@ -40,12 +41,15 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
     private readonly Dictionary<nint, int> _slotByItemServices = new();
     private readonly Dictionary<nint, (nint Item, float Until)> _refusedPickups = new();
     private readonly Dictionary<int, PendingChatLimit> _pendingChatLimits = new();
+    private readonly bool[] _immunityHeld = new bool[WeaponCatalog.All.Count];
     private TeamLimit[] _configLimits = CreateUnrestrictedLimits();
     private PerPlayerRules _perPlayerRules = PerPlayerRules.Empty;
     private WeaponImmunityRules _weaponImmunity = WeaponImmunityRules.Empty;
+    private MapRules _mapRules = MapRules.Empty;
     private WasdMenuService _menus = null!;
     private bool _canAcquireHooked;
     private bool _enforceQueued;
+    private bool _mapStarted;
     private int _lastPerPlayerCount = -1;
     private DateTime _lastHookErrorUtc = DateTime.MinValue;
     private int _itemOffsetInWeapon = -1;
@@ -56,6 +60,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
 
         config.Restrictions ??= new Dictionary<string, UmbrellaWeaponRestrictConfig.TeamLimitSettings>();
         config.WeaponImmunity ??= new Dictionary<string, string>();
+        config.Maps ??= new Dictionary<string, Dictionary<string, UmbrellaWeaponRestrictConfig.TeamLimitSettings>>();
         config.PerPlayer ??= new UmbrellaWeaponRestrictConfig.PerPlayerSettings();
         config.PerPlayer.Rules ??= new Dictionary<string, Dictionary<string, int>>();
         config.Menu ??= new UmbrellaWeaponRestrictConfig.MenuSettings();
@@ -81,11 +86,12 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
             else if (value != null)
             {
                 limits[weapon.Index] = new TeamLimit(
-                    RestrictionState.Clamp(value.T, $"Restrictions.{key}.T", warnings),
-                    RestrictionState.Clamp(value.CT, $"Restrictions.{key}.CT", warnings));
+                    RestrictionState.Clamp(value.T ?? RestrictionState.Unlimited, $"Restrictions.{key}.T", warnings),
+                    RestrictionState.Clamp(value.CT ?? RestrictionState.Unlimited, $"Restrictions.{key}.CT", warnings));
             }
         }
 
+        MapRules mapRules = MapRules.Parse(ReadMapLimits(config.Maps), warnings);
         WeaponImmunityRules weaponImmunity = WeaponImmunityRules.Parse(config.WeaponImmunity, warnings);
         PerPlayerRules perPlayerRules = PerPlayerRules.Parse(config.PerPlayer.Rules, warnings);
         if (config.PerPlayer.Enabled && perPlayerRules.IsEmpty)
@@ -95,6 +101,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
 
         Config = config;
         _configLimits = limits;
+        _mapRules = mapRules;
         _weaponImmunity = weaponImmunity;
         _perPlayerRules = perPlayerRules;
 
@@ -115,6 +122,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         AddCommand("css_wrmenu", "Open the weapon restriction menu.", OnMenuCommand);
         AddCommand("css_remove_restricted", "Remove weapons that exceed the current limits.", OnRemoveRestrictedCommand);
         AddCommand("css_wr_list", "List the active weapon restrictions.", OnListCommand);
+        AddCommand("css_restrictions", "Show the weapon limits of your team.", OnRestrictionsCommand);
         AddCommand("css_wr_reload", "Reload the weapon restriction config.", OnReloadCommand);
 
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
@@ -138,8 +146,9 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         // Loaded mid-map (css_plugins load or a hot reload): OnMapStart will not run for this map.
         Server.NextFrame(() =>
         {
-            if (!string.IsNullOrEmpty(Server.MapName))
+            if (!_mapStarted && !string.IsNullOrEmpty(Server.MapName))
             {
+                ResetToConfig(Server.MapName);
                 RefreshPerPlayer(force: true);
                 QueueEnforce();
             }
@@ -174,6 +183,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
     {
         // A queued enforcement may not survive the map change; it must not keep blocking new ones.
         _enforceQueued = false;
+        _mapStarted = true;
         _slotByItemServices.Clear();
         _refusedPickups.Clear();
         _pendingChatLimits.Clear();
@@ -181,8 +191,21 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         Array.Clear(_lastPickupNotify);
 
         // Every map starts from the config file; admin changes only last until the map changes.
-        _limits.ResetBase(_configLimits);
+        ResetToConfig(mapName);
         RefreshPerPlayer(force: true);
+    }
+
+    /// <summary>Restrictions from the config file, with the Maps entries for this map on top.</summary>
+    private void ResetToConfig(string mapName)
+    {
+        _limits.ResetBase(_mapRules.Apply(_configLimits, mapName));
+
+        // Names the map as the server reports it, which is what Maps entries are matched against.
+        if (!_mapRules.IsEmpty)
+        {
+            string[] entries = _mapRules.Matching(mapName).ToArray();
+            Logger.LogInformation("Maps entries for {Map}: {Entries}.", mapName, entries.Length > 0 ? string.Join(", ", entries) : "none");
+        }
     }
 
     private void OnMapEnd()
@@ -430,7 +453,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
                player.Team is CsTeam.Terrorist or CsTeam.CounterTerrorist;
     }
 
-    /// <summary>AdminImmunity: every limit is ignored.</summary>
+    /// <summary>AdminImmunity, which covers every weapon.</summary>
     private bool IsImmune(CCSPlayerController player)
     {
         return Config.AdminImmunity &&
@@ -438,10 +461,13 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
                HasPermission(player, Config.ImmunityPermission);
     }
 
-    /// <summary>AdminImmunity, or a WeaponImmunity entry that covers this weapon.</summary>
+    /// <summary>
+    /// AdminImmunity, or a WeaponImmunity entry that covers this weapon, unless a per-player rule holds
+    /// immunity back for it.
+    /// </summary>
     private bool IsImmune(CCSPlayerController player, WeaponDefinition weapon)
     {
-        return IsImmune(player) || HasWeaponImmunity(player, weapon);
+        return !_immunityHeld[weapon.Index] && (IsImmune(player) || HasWeaponImmunity(player, weapon));
     }
 
     private bool HasWeaponImmunity(CCSPlayerController player, WeaponDefinition weapon)
@@ -500,13 +526,13 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         int count = 0;
         foreach (CCSPlayerController player in Utilities.GetPlayers())
         {
-            if (player.Team != team || IsImmune(player, weapon))
+            if (player.Team != team)
             {
                 continue;
             }
 
             CCSPlayerPawn? pawn = WeaponInventory.GetAlivePawn(player);
-            if (pawn != null)
+            if (pawn != null && !IsImmune(GetDriver(player, pawn), weapon))
             {
                 count += WeaponInventory.Count(pawn, weapon);
             }
@@ -554,7 +580,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
 
         foreach (CCSPlayerController player in Utilities.GetPlayers())
         {
-            if (!CanEvaluate(player) || IsImmune(player))
+            if (!CanEvaluate(player))
             {
                 continue;
             }
@@ -565,16 +591,40 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
                 continue;
             }
 
+            CCSPlayerController driver = GetDriver(player, pawn);
             try
             {
                 WeaponInventory.Enforce(pawn, player.Team == CsTeam.Terrorist ? tBudget : ctBudget,
-                    weapon => HasWeaponImmunity(player, weapon));
+                    weapon => IsImmune(driver, weapon));
             }
             catch (Exception exception)
             {
                 Logger.LogError(exception, "Could not enforce the limits on {Player}.", player.PlayerName);
             }
         }
+    }
+
+    /// <summary>
+    /// During a bot takeover the human drives the bot's pawn, so the human's immunity applies to what it
+    /// carries, the same as for buys and pickups.
+    /// </summary>
+    private static CCSPlayerController GetDriver(CCSPlayerController owner, CCSPlayerPawn pawn)
+    {
+        // A bot's m_hPawn only leaves its own pawn while a human drives it.
+        if (!owner.IsBot || owner.Pawn.Value?.Handle == pawn.Handle)
+        {
+            return owner;
+        }
+
+        foreach (CCSPlayerController player in Utilities.GetPlayers())
+        {
+            if (!player.IsBot && player.Pawn.Value?.Handle == pawn.Handle)
+            {
+                return player;
+            }
+        }
+
+        return owner;
     }
 
     private int[] BuildBudget(CsTeam team)
@@ -601,6 +651,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         if (!Config.PerPlayer.Enabled || _perPlayerRules.IsEmpty)
         {
             _limits.ClearPerPlayer();
+            Array.Clear(_immunityHeld);
             _lastPerPlayerCount = -1;
             return;
         }
@@ -615,6 +666,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         foreach (WeaponDefinition weapon in WeaponCatalog.All)
         {
             _limits.SetPerPlayer(weapon, _perPlayerRules.GetLimit(weapon, count));
+            _immunityHeld[weapon.Index] = _perPlayerRules.HoldsImmunity(weapon, count);
         }
 
         if (Config.Debug)
@@ -807,21 +859,25 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         string teamName = GetTeamName(player, team);
         List<WeaponDefinition> weapons;
         string message;
+        Func<CCSPlayerController, string> subjectName;
 
         if (target.Equals("all", StringComparison.OrdinalIgnoreCase) || target.Equals("@all", StringComparison.OrdinalIgnoreCase))
         {
             weapons = WeaponCatalog.All.ToList();
             message = Localizer.ForPlayer(player, "restrict.all", teamName, amount);
+            subjectName = reader => Localizer.ForPlayer(reader, "announce.all_weapons");
         }
         else if (WeaponCatalog.TryParseGroup(target, out WeaponGroup group))
         {
             weapons = WeaponCatalog.InGroup(group).ToList();
             message = Localizer.ForPlayer(player, "restrict.group", GetGroupName(player, group), teamName, amount);
+            subjectName = reader => GetGroupName(reader, group);
         }
         else if (WeaponCatalog.Find(target) is { } weapon)
         {
             weapons = [weapon];
             message = Localizer.ForPlayer(player, "restrict.weapon", weapon.DisplayName, teamName, amount);
+            subjectName = _ => weapon.DisplayName;
         }
         else
         {
@@ -829,7 +885,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
             return;
         }
 
-        SetBaseLimits(player, weapons, team, amount, target);
+        SetBaseLimits(player, weapons, team, amount, target, subjectName);
         Reply(player, info, message);
 
         string? overridden = DescribePerPlayerOverride(player, weapons);
@@ -839,7 +895,8 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         }
     }
 
-    private void SetBaseLimits(CCSPlayerController? player, List<WeaponDefinition> weapons, RestrictTeam team, int amount, string target)
+    private void SetBaseLimits(CCSPlayerController? player, List<WeaponDefinition> weapons, RestrictTeam team, int amount, string target,
+        Func<CCSPlayerController, string> subjectName)
     {
         foreach (WeaponDefinition weapon in weapons)
         {
@@ -848,7 +905,43 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
 
         string admin = player == null ? "Console" : $"{player.PlayerName} ({player.SteamID})";
         Logger.LogInformation("{Admin} set {Target} for {Team} to {Amount}.", admin, target, team, amount);
+        AnnounceChange(player, weapons, subjectName, team, amount);
         QueueEnforce();
+    }
+
+    /// <summary>
+    /// Tells the other players what an in-game admin changed, each in their own language. Changes from
+    /// the server console, RCON or .cfg files stay quiet: they usually run on every map start. So does a
+    /// change players would not notice: the plugin is off, or per-player rules decide every weapon.
+    /// </summary>
+    private void AnnounceChange(CCSPlayerController? admin, List<WeaponDefinition> weapons, Func<CCSPlayerController, string> subjectName,
+        RestrictTeam team, int amount)
+    {
+        if (!Config.AnnounceChanges || !Config.Enabled || admin == null || weapons.All(_limits.HasPerPlayerLimit))
+        {
+            return;
+        }
+
+        string key = amount switch
+        {
+            RestrictionState.Unlimited => "announce.unrestricted",
+            0 => "announce.blocked",
+            _ => "announce.limited"
+        };
+        string teamKey = team switch
+        {
+            RestrictTeam.Terrorist => "team.t",
+            RestrictTeam.CounterTerrorist => "team.ct",
+            _ => "team.both"
+        };
+
+        foreach (CCSPlayerController reader in Utilities.GetPlayers())
+        {
+            if (!reader.IsBot && reader.Slot != admin.Slot)
+            {
+                PrintToChat(reader, Localizer.ForPlayer(reader, key, admin.PlayerName, subjectName(reader), Localizer.ForPlayer(reader, teamKey), amount));
+            }
+        }
     }
 
     /// <summary>
@@ -918,6 +1011,109 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         }
     }
 
+    /// <summary>
+    /// Open to everyone: players see their own team's limits, spectators and the console both teams.
+    /// </summary>
+    private void OnRestrictionsCommand(CCSPlayerController? player, CommandInfo info)
+    {
+        CsTeam[] teams = player?.Team is CsTeam.Terrorist or CsTeam.CounterTerrorist
+            ? [player.Team]
+            : [CsTeam.Terrorist, CsTeam.CounterTerrorist];
+
+        bool any = false;
+        foreach (CsTeam team in teams)
+        {
+            (List<string> blocked, List<string> limited) = DescribeTeamLimits(player, team);
+            if (blocked.Count == 0 && limited.Count == 0)
+            {
+                continue;
+            }
+
+            any = true;
+            Reply(player, info, teams.Length == 1
+                ? Localizer.ForPlayer(player, "list.your_team")
+                : Localizer.ForPlayer(player, "list.team_header", Localizer.ForPlayer(player, team == CsTeam.Terrorist ? "team.t" : "team.ct")));
+            ReplyEntries(player, info, "list.blocked", blocked);
+            ReplyEntries(player, info, "list.limited", limited);
+        }
+
+        if (!any)
+        {
+            ReplyKey(player, info, "list.none");
+        }
+    }
+
+    /// <summary>A group whose weapons are all blocked is named once instead of weapon by weapon.</summary>
+    private (List<string> Blocked, List<string> Limited) DescribeTeamLimits(CCSPlayerController? player, CsTeam team)
+    {
+        List<string> blocked = [];
+        List<string> limited = [];
+        if (!Config.Enabled)
+        {
+            return (blocked, limited);
+        }
+
+        foreach (WeaponGroup group in MenuCategories)
+        {
+            WeaponDefinition[] weapons = WeaponCatalog.InGroup(group).ToArray();
+            if (group != WeaponGroup.None && weapons.All(weapon => _limits.Get(weapon, team) == 0))
+            {
+                blocked.Add(GetGroupName(player, group));
+                continue;
+            }
+
+            foreach (WeaponDefinition weapon in weapons)
+            {
+                int limit = _limits.Get(weapon, team);
+                if (limit == 0)
+                {
+                    blocked.Add(weapon.DisplayName);
+                }
+                else if (limit > 0)
+                {
+                    limited.Add(Localizer.ForPlayer(player, "list.entry_limit", weapon.DisplayName, limit));
+                }
+            }
+        }
+
+        return (blocked, limited);
+    }
+
+    private void ReplyEntries(CCSPlayerController? player, CommandInfo info, string key, List<string> entries)
+    {
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        List<string> lines = JoinInLines(entries, MaxListLineLength);
+        Reply(player, info, Localizer.ForPlayer(player, key, lines[0]));
+        foreach (string line in lines.Skip(1))
+        {
+            Reply(player, info, line);
+        }
+    }
+
+    /// <summary>Chat cuts long messages, so the entries are spread over as many lines as needed.</summary>
+    private static List<string> JoinInLines(IEnumerable<string> entries, int maxLength)
+    {
+        List<string> lines = [];
+        StringBuilder line = new();
+        foreach (string entry in entries)
+        {
+            if (line.Length > 0 && line.Length + 2 + entry.Length > maxLength)
+            {
+                lines.Add(line.ToString());
+                line.Clear();
+            }
+
+            line.Append(line.Length > 0 ? ", " : string.Empty).Append(entry);
+        }
+
+        lines.Add(line.ToString());
+        return lines;
+    }
+
     private void OnReloadCommand(CCSPlayerController? player, CommandInfo info)
     {
         if (!HasAdminAccess(player, info))
@@ -937,7 +1133,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         }
 
         _menus.UpdateSettings(Config.Menu);
-        _limits.ResetBase(_configLimits);
+        ResetToConfig(Server.MapName);
         RefreshPerPlayer(force: true);
         QueueEnforce();
         ReplyKey(player, info, "command.reloaded");
@@ -1144,7 +1340,8 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         }
 
         List<WeaponDefinition> weapons = subject.Weapon != null ? [subject.Weapon] : WeaponCatalog.InGroup(subject.Group).ToList();
-        SetBaseLimits(player, weapons, team, amount, subject.Weapon?.Key ?? subject.Group.ToString().ToLowerInvariant());
+        SetBaseLimits(player, weapons, team, amount, subject.Weapon?.Key ?? subject.Group.ToString().ToLowerInvariant(),
+            reader => GetSubjectName(reader, subject));
 
         string teamName = GetTeamName(player, team);
         PrintToChat(player, subject.Weapon != null
@@ -1249,6 +1446,15 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
     private static TeamLimit[] CreateUnrestrictedLimits()
     {
         return Enumerable.Repeat(TeamLimit.Unrestricted, WeaponCatalog.All.Count).ToArray();
+    }
+
+    private static Dictionary<string, Dictionary<string, MapRules.MapLimit>> ReadMapLimits(
+        Dictionary<string, Dictionary<string, UmbrellaWeaponRestrictConfig.TeamLimitSettings>> maps)
+    {
+        return maps.ToDictionary(
+            map => map.Key,
+            map => (map.Value ?? []).Where(entry => entry.Value != null)
+                .ToDictionary(entry => entry.Key, entry => new MapRules.MapLimit(entry.Value.T, entry.Value.CT)));
     }
 
     private static string NormalizePermission(string? value, string fallback, string name, ICollection<string> warnings)

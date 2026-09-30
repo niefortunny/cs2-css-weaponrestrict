@@ -18,6 +18,11 @@
   "list.title": "当前生效的限制：",
   "list.none": "没有生效的限制。",
   "list.perplayer": "按人数",
+  "list.your_team": "你的队伍：",
+  "list.team_header": "{0}：",
+  "list.blocked": "已封锁：{0}",
+  "list.limited": "限制：{0}",
+  "list.entry_limit": "{0}（最多 {1}）",
   "menu.title": "武器限制",
   "menu.groups_option": "限制整个武器组",
   "menu.groups_title": "按组限制",
@@ -42,5 +47,9 @@
   "team.ct_short": "CT",
   "team.both": "双方队伍",
   "notify.blocked": "{0} 已对你的队伍禁用。",
-  "notify.limit": "{0} 已达到你的队伍限制（{1}）。"
+  "notify.limit": "{0} 已达到你的队伍限制（{1}）。",
+  "announce.blocked": "{0} 封锁了 {1}（{2}）。",
+  "announce.limited": "{0} 将 {1} 限制为 {3}（{2}）。",
+  "announce.unrestricted": "{0} 取消了 {1} 的限制（{2}）。",
+  "announce.all_weapons": "所有武器"
 }

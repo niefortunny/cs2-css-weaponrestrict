@@ -18,6 +18,11 @@
   "list.title": "Активные ограничения:",
   "list.none": "Активных ограничений нет.",
   "list.perplayer": "по числу игроков",
+  "list.your_team": "Ваша команда:",
+  "list.team_header": "{0}:",
+  "list.blocked": "Заблокировано: {0}",
+  "list.limited": "Ограничено: {0}",
+  "list.entry_limit": "{0} (макс. {1})",
   "menu.title": "Ограничение оружия",
   "menu.groups_option": "Ограничить всю группу",
   "menu.groups_title": "Ограничение по группе",
@@ -42,5 +47,9 @@
   "team.ct_short": "CT",
   "team.both": "обе команды",
   "notify.blocked": "{0} заблокировано для вашей команды.",
-  "notify.limit": "{0} достигло лимита вашей команды ({1})."
+  "notify.limit": "{0} достигло лимита вашей команды ({1}).",
+  "announce.blocked": "{0} заблокировал(а) {1} ({2}).",
+  "announce.limited": "{0} ограничил(а) {1} до {3} ({2}).",
+  "announce.unrestricted": "{0} снял(а) ограничение: {1} ({2}).",
+  "announce.all_weapons": "всё оружие"
 }

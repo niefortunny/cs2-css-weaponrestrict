@@ -18,6 +18,11 @@
   "list.title": "Etkin kısıtlamalar:",
   "list.none": "Etkin kısıtlama yok.",
   "list.perplayer": "oyuncu sayısına göre",
+  "list.your_team": "Takımınız:",
+  "list.team_header": "{0}:",
+  "list.blocked": "Engelli: {0}",
+  "list.limited": "Sınırlı: {0}",
+  "list.entry_limit": "{0} (en fazla {1})",
   "menu.title": "Silah Kısıtlama",
   "menu.groups_option": "Tüm grubu kısıtla",
   "menu.groups_title": "Gruba göre kısıtla",
@@ -42,5 +47,9 @@
   "team.ct_short": "CT",
   "team.both": "her iki takım",
   "notify.blocked": "{0} takımınız için engellendi.",
-  "notify.limit": "{0} takım limitinize ulaştı ({1})."
+  "notify.limit": "{0} takım limitinize ulaştı ({1}).",
+  "announce.blocked": "{0} kısıtlamayı değiştirdi: {1} engellendi ({2}).",
+  "announce.limited": "{0} kısıtlamayı değiştirdi: {1} en fazla {3} ({2}).",
+  "announce.unrestricted": "{0} kısıtlamayı kaldırdı: {1} ({2}).",
+  "announce.all_weapons": "tüm silahlar"
 }

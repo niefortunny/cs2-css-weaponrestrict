@@ -18,6 +18,9 @@ public sealed class UmbrellaWeaponRestrictConfig : BasePluginConfig
     [JsonPropertyName("RestrictedSound")]
     public string RestrictedSound { get; set; } = "sounds/ui/weapon_cant_buy.vsnd_c";
 
+    [JsonPropertyName("AnnounceChanges")]
+    public bool AnnounceChanges { get; set; } = true;
+
     [JsonPropertyName("AdminPermission")]
     public string AdminPermission { get; set; } = "@css/cvar";
 
@@ -34,6 +37,9 @@ public sealed class UmbrellaWeaponRestrictConfig : BasePluginConfig
     public Dictionary<string, TeamLimitSettings> Restrictions { get; set; } =
         WeaponCatalog.All.ToDictionary(weapon => weapon.Key, _ => new TeamLimitSettings());
 
+    [JsonPropertyName("Maps")]
+    public Dictionary<string, Dictionary<string, TeamLimitSettings>> Maps { get; set; } = new();
+
     [JsonPropertyName("PerPlayer")]
     public PerPlayerSettings PerPlayer { get; set; } = new();
 
@@ -43,11 +49,12 @@ public sealed class UmbrellaWeaponRestrictConfig : BasePluginConfig
     [JsonPropertyName("Debug")]
     public bool Debug { get; set; } = false;
 
+    /// <summary>A team left out of the JSON is null: unrestricted in Restrictions, unchanged in Maps.</summary>
     [JsonConverter(typeof(TeamLimitSettingsConverter))]
     public sealed class TeamLimitSettings
     {
-        public int T { get; set; } = RestrictionState.Unlimited;
-        public int CT { get; set; } = RestrictionState.Unlimited;
+        public int? T { get; set; } = RestrictionState.Unlimited;
+        public int? CT { get; set; } = RestrictionState.Unlimited;
     }
 
     public sealed class PerPlayerSettings

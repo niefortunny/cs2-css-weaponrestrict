@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.2] - 2026-09-30
+
+### Added
+- `Maps`: different limits for single maps or map name patterns such as `awp_*`.
+- `css_restrictions` (`!restrictions`): anyone can see the current limits of their team.
+- `AnnounceChanges`: everyone is told in chat when an in-game admin changes a limit.
+- Per-player rules take an `immunity` key: VIP and admin immunity for that weapon only applies from that many players.
+
+### Fixed
+- An immune player controlling a bot no longer uses the team's slots with what they carry, the same as on their own character.
+
 ## [1.0.1] - 2026-09-29
 
 ### Added

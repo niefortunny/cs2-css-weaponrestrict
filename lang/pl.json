@@ -18,6 +18,11 @@
   "list.title": "Aktywne ograniczenia:",
   "list.none": "Brak aktywnych ograniczeń.",
   "list.perplayer": "wg liczby graczy",
+  "list.your_team": "Twoja drużyna:",
+  "list.team_header": "{0}:",
+  "list.blocked": "Zablokowane: {0}",
+  "list.limited": "Ograniczone: {0}",
+  "list.entry_limit": "{0} (maks. {1})",
   "menu.title": "Ograniczenie broni",
   "menu.groups_option": "Ogranicz całą grupę",
   "menu.groups_title": "Ograniczenie według grupy",
@@ -42,5 +47,9 @@
   "team.ct_short": "CT",
   "team.both": "obie drużyny",
   "notify.blocked": "{0} jest zablokowana dla twojej drużyny.",
-  "notify.limit": "{0} osiągnęła limit twojej drużyny ({1})."
+  "notify.limit": "{0} osiągnęła limit twojej drużyny ({1}).",
+  "announce.blocked": "{0} zablokował(a) {1} ({2}).",
+  "announce.limited": "{0} ograniczył(a) {1} do {3} ({2}).",
+  "announce.unrestricted": "{0} wyłączył(a) limit: {1} ({2}).",
+  "announce.all_weapons": "wszystkie bronie"
 }
