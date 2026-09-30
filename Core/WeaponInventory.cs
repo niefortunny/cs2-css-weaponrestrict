@@ -47,21 +47,25 @@ public static class WeaponInventory
     /// <summary>
     /// Walks the pawn's items once. Each managed item spends its team budget in
     /// <paramref name="remaining"/> (indexed by catalog index, negative = unrestricted); whatever does
-    /// not fit is removed.
+    /// not fit is removed. Items the player is exempt from stay and spend nothing.
     /// </summary>
-    public static void Enforce(CCSPlayerPawn pawn, int[] remaining)
+    public static void Enforce(CCSPlayerPawn pawn, int[] remaining, Func<WeaponDefinition, bool> isExempt)
     {
         if (pawn.ArmorValue > 0)
         {
             bool helmet = HasHelmet(pawn);
-            ref int budget = ref remaining[(helmet ? WeaponCatalog.AssaultSuit : WeaponCatalog.Kevlar).Index];
-            if (budget > 0)
+            WeaponDefinition armor = helmet ? WeaponCatalog.AssaultSuit : WeaponCatalog.Kevlar;
+            ref int budget = ref remaining[armor.Index];
+            if (budget >= 0 && !isExempt(armor))
             {
-                budget--;
-            }
-            else if (budget == 0)
-            {
-                RemoveArmor(pawn, helmet);
+                if (budget > 0)
+                {
+                    budget--;
+                }
+                else
+                {
+                    RemoveArmor(pawn, helmet);
+                }
             }
         }
 
@@ -82,7 +86,7 @@ public static class WeaponInventory
             }
 
             WeaponDefinition? weapon = WeaponCatalog.FindByDefinitionIndex(item.AttributeManager.Item.ItemDefinitionIndex);
-            if (weapon != null && remaining[weapon.Index] >= 0)
+            if (weapon != null && remaining[weapon.Index] >= 0 && !isExempt(weapon))
             {
                 (restricted ??= []).Add((item, weapon));
             }

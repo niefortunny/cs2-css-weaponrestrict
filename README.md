@@ -7,7 +7,7 @@
 [![Release](https://img.shields.io/github/v/release/Ayrton09/umbrella-weapon-restrict-cs2?style=flat-square&color=success)](https://github.com/Ayrton09/umbrella-weapon-restrict-cs2/releases)
 [![License](https://img.shields.io/github/license/Ayrton09/umbrella-weapon-restrict-cs2?style=flat-square)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512BD4?style=flat-square)](https://dotnet.microsoft.com/)
-[![CounterStrikeSharp](https://img.shields.io/badge/CounterStrikeSharp-1.0.375-F5834A?style=flat-square)](https://docs.cssharp.dev/)
+[![CounterStrikeSharp](https://img.shields.io/badge/CounterStrikeSharp-1.0.376-F5834A?style=flat-square)](https://docs.cssharp.dev/)
 
 </div>
 
@@ -37,6 +37,7 @@ Limit weapons per team, per weapon group or by the number of players on the serv
 - Weapon groups: pistols, SMGs, shotguns, rifles, snipers, grenades, armor
 - Optional limits that follow the number of players on the server
 - Admin immunity through a CounterStrikeSharp flag or group
+- Immunity for single weapons or groups, for example VIPs and the AWP
 
 **Enforcement**
 - Buys are refused before the money is taken
@@ -72,7 +73,7 @@ addons/counterstrikesharp/plugins/UmbrellaWeaponRestrict/
 addons/counterstrikesharp/configs/plugins/UmbrellaWeaponRestrict/UmbrellaWeaponRestrict.json
 ```
 
-Requires CounterStrikeSharp 1.0.375 or newer.
+Requires CounterStrikeSharp 1.0.376 or newer.
 
 ## Commands
 
@@ -128,6 +129,7 @@ While the menu is open you stay in place, so the movement keys only drive the me
 | `AdminPermission` | `@css/cvar` | Flag (`@css/...`) or group (`#...`) needed for the commands and the menu |
 | `AdminImmunity` | `false` | Players with `ImmunityPermission` ignore every limit and do not count toward it |
 | `ImmunityPermission` | `@css/root` | Flag or group checked for immunity |
+| `WeaponImmunity` | empty | Immunity for single weapons or groups, see below |
 | `Restrictions` | all `-1` | Limit per weapon and team, see below |
 | `PerPlayer` | disabled | Limits that follow the player count, see [Per-Player Rules](#per-player-rules) |
 | `Menu` | | Menu keys and behavior, see below |
@@ -144,6 +146,17 @@ While the menu is open you stay in place, so the movement keys only drive the me
 ```
 
 Weapons missing from the list are unrestricted. Keys accept the aliases from the [weapon table](#weapons).
+
+`WeaponImmunity` exempts a flag or group from the limits of single weapons or whole groups, for example VIPs and the AWP:
+
+```json
+"WeaponImmunity": {
+  "awp": "@css/vip",
+  "snipers": "#css/donator"
+}
+```
+
+Players with that permission can buy and pick up those weapons at any limit, whether it comes from the config, a command, the menu or a per-player rule, and theirs do not count toward the team's. Every other limit still applies to them. `AdminImmunity` does the same for every weapon at once. CounterStrikeSharp gives `@css/root` every `@css/` flag, so root admins also get the entries that use one.
 
 `Menu` controls the WASD center menu:
 

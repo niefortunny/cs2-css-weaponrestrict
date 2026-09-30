@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1] - 2026-09-29
+
+### Added
+- `WeaponImmunity`: a flag or group can ignore the limits of single weapons or groups, for example VIPs and the AWP.
+
+### Changed
+- Requires CounterStrikeSharp 1.0.376.
+
 ## [1.0.0] - 2026-09-27
 
 Initial CS2 release, based on the [SourceMod plugin](https://github.com/Ayrton09/umbrella-weapon-restrict) for CS:S/CS:GO.

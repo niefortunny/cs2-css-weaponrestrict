@@ -17,7 +17,7 @@ using UmbrellaWeaponRestrict.Menus;
 
 namespace UmbrellaWeaponRestrict;
 
-[MinimumApiVersion(375)]
+[MinimumApiVersion(376)]
 public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<UmbrellaWeaponRestrictConfig>
 {
     private const string ConsolePrefix = "[UWR]";
@@ -28,7 +28,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
     private const int MaxSlots = 64;
 
     public override string ModuleName => "Umbrella Weapon Restrict";
-    public override string ModuleVersion => "1.0.0";
+    public override string ModuleVersion => "1.0.1";
     public override string ModuleAuthor => "Ayrton09";
     public override string ModuleDescription => "Weapon restrictions by team, weapon group and player count";
 
@@ -42,6 +42,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
     private readonly Dictionary<int, PendingChatLimit> _pendingChatLimits = new();
     private TeamLimit[] _configLimits = CreateUnrestrictedLimits();
     private PerPlayerRules _perPlayerRules = PerPlayerRules.Empty;
+    private WeaponImmunityRules _weaponImmunity = WeaponImmunityRules.Empty;
     private WasdMenuService _menus = null!;
     private bool _canAcquireHooked;
     private bool _enforceQueued;
@@ -54,6 +55,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         List<string> warnings = [];
 
         config.Restrictions ??= new Dictionary<string, UmbrellaWeaponRestrictConfig.TeamLimitSettings>();
+        config.WeaponImmunity ??= new Dictionary<string, string>();
         config.PerPlayer ??= new UmbrellaWeaponRestrictConfig.PerPlayerSettings();
         config.PerPlayer.Rules ??= new Dictionary<string, Dictionary<string, int>>();
         config.Menu ??= new UmbrellaWeaponRestrictConfig.MenuSettings();
@@ -84,6 +86,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
             }
         }
 
+        WeaponImmunityRules weaponImmunity = WeaponImmunityRules.Parse(config.WeaponImmunity, warnings);
         PerPlayerRules perPlayerRules = PerPlayerRules.Parse(config.PerPlayer.Rules, warnings);
         if (config.PerPlayer.Enabled && perPlayerRules.IsEmpty)
         {
@@ -92,6 +95,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
 
         Config = config;
         _configLimits = limits;
+        _weaponImmunity = weaponImmunity;
         _perPlayerRules = perPlayerRules;
 
         foreach (string warning in warnings)
@@ -300,7 +304,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
             }
 
             (CCSPlayerController? player, CCSPlayerPawn? pawn) = FindItemServicesOwner(services);
-            if (player == null || pawn == null || !CanEvaluate(player) || IsImmune(player))
+            if (player == null || pawn == null || !CanEvaluate(player) || IsImmune(player, weapon))
             {
                 return HookResult.Continue;
             }
@@ -426,11 +430,36 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
                player.Team is CsTeam.Terrorist or CsTeam.CounterTerrorist;
     }
 
+    /// <summary>AdminImmunity: every limit is ignored.</summary>
     private bool IsImmune(CCSPlayerController player)
     {
         return Config.AdminImmunity &&
                !player.IsBot &&
                HasPermission(player, Config.ImmunityPermission);
+    }
+
+    /// <summary>AdminImmunity, or a WeaponImmunity entry that covers this weapon.</summary>
+    private bool IsImmune(CCSPlayerController player, WeaponDefinition weapon)
+    {
+        return IsImmune(player) || HasWeaponImmunity(player, weapon);
+    }
+
+    private bool HasWeaponImmunity(CCSPlayerController player, WeaponDefinition weapon)
+    {
+        if (player.IsBot)
+        {
+            return false;
+        }
+
+        foreach (string permission in _weaponImmunity.Get(weapon))
+        {
+            if (HasPermission(player, permission))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -471,7 +500,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         int count = 0;
         foreach (CCSPlayerController player in Utilities.GetPlayers())
         {
-            if (player.Team != team || IsImmune(player))
+            if (player.Team != team || IsImmune(player, weapon))
             {
                 continue;
             }
@@ -538,7 +567,8 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
 
             try
             {
-                WeaponInventory.Enforce(pawn, player.Team == CsTeam.Terrorist ? tBudget : ctBudget);
+                WeaponInventory.Enforce(pawn, player.Team == CsTeam.Terrorist ? tBudget : ctBudget,
+                    weapon => HasWeaponImmunity(player, weapon));
             }
             catch (Exception exception)
             {

@@ -27,6 +27,9 @@ public sealed class UmbrellaWeaponRestrictConfig : BasePluginConfig
     [JsonPropertyName("ImmunityPermission")]
     public string ImmunityPermission { get; set; } = "@css/root";
 
+    [JsonPropertyName("WeaponImmunity")]
+    public Dictionary<string, string> WeaponImmunity { get; set; } = new();
+
     [JsonPropertyName("Restrictions")]
     public Dictionary<string, TeamLimitSettings> Restrictions { get; set; } =
         WeaponCatalog.All.ToDictionary(weapon => weapon.Key, _ => new TeamLimitSettings());
