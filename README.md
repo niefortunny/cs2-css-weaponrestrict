@@ -47,7 +47,7 @@ Limit weapons per team, per weapon group or by the number of players on the serv
 - Weapons over a lowered limit are removed at once and at every round start
 
 **Admins**
-- WASD center menu organized by weapon type, color coded per group
+- MenuManager menu organized by weapon type
 - Console, RCON and chat commands, also usable from `.cfg` files
 - Config reload without restarting the server
 - Chat announcement when an admin changes a limit (optional)
@@ -77,7 +77,7 @@ addons/counterstrikesharp/plugins/UmbrellaWeaponRestrict/
 addons/counterstrikesharp/configs/plugins/UmbrellaWeaponRestrict/UmbrellaWeaponRestrict.json
 ```
 
-Requires CounterStrikeSharp 1.0.376 or newer.
+Requires CounterStrikeSharp 1.0.376 or newer, plus MenuManager Core and CoreSettings on the server.
 
 ## Commands
 
@@ -115,13 +115,13 @@ Changes made with commands or the menu last until the map changes or `css_wr_rel
 
 ## Menu
 
-`!wrmenu` (or `!restrictmenu`) opens a center menu driven with the movement keys:
+`!wrmenu` (or `!restrictmenu`) opens a MenuManager menu:
 
 - **Restrict a whole group** applies one limit to every weapon of a group.
-- **Pistols, SMGs, Shotguns, Rifles, Snipers, Grenades, Armor, Other** list their weapons with the current limits. Each group has its own color and shows how many of its weapons are restricted.
+- **Pistols, SMGs, Shotguns, Rifles, Snipers, Grenades, Armor, Other** list their weapons with the current limits. Each group shows how many of its weapons are restricted.
 - After a weapon or group, pick the team and the limit: unlimited, blocked, or **type a number in chat** (1 to 64). The number is not shown in chat, and a message that is not a number cancels.
 
-While the menu is open you stay in place, so the movement keys only drive the menu. After a change it goes back to the list you came from. It works while dead or spectating, and closes when you take over a bot (open it again on the bot).
+Requires [MenuManager](https://github.com/NickFox007/MenuManagerCS2) (capability `menu:nfcore`) on the server. After a change the menu returns to the list you came from.
 
 ## Configuration
 
@@ -139,7 +139,6 @@ While the menu is open you stay in place, so the movement keys only drive the me
 | `Restrictions` | all `-1` | Limit per weapon and team, see below |
 | `Maps` | empty | Limits for single maps or map name patterns, see [Per-Map Limits](#per-map-limits) |
 | `PerPlayer` | disabled | Limits that follow the player count, see [Per-Player Rules](#per-player-rules) |
-| `Menu` | | Menu keys and behavior, see below |
 | `Debug` | `false` | Log refused buys and pickups (once per notice, like the chat message) and per-player refreshes |
 
 `Restrictions` lists every managed weapon with a limit for each team:
@@ -164,21 +163,6 @@ Weapons missing from the list are unrestricted. Keys accept the aliases from the
 ```
 
 Players with that permission can buy and pick up those weapons at any limit, whether it comes from the config, a command, the menu or a per-player rule, and theirs do not count toward the team's. Every other limit still applies to them. `AdminImmunity` does the same for every weapon at once, and a [per-player rule](#per-player-rules) can hold either back until enough players are on. CounterStrikeSharp gives `@css/root` every `@css/` flag, so root admins also get the entries that use one.
-
-`Menu` controls the WASD center menu:
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `FreezePlayer` | `true` | Hold the player in place while the menu is open |
-| `VisibleItems` | `5` | Rows shown at once (3 to 9) |
-| `InputDebounceMilliseconds` | `140` | Minimum time between two key presses |
-| `InitialInputDelayMilliseconds` | `500` | Keys ignored right after opening the menu |
-| `ScrollUpKeys` / `ScrollDownKeys` | `["W"]` / `["S"]` | Move the selection |
-| `SelectKeys` | `["E"]` | Choose the selected row |
-| `BackKeys` | `["Shift", "A"]` | Go back one screen |
-| `CancelKeys` | `["R"]` | Close the menu |
-
-Each action takes one or more of `W`, `A`, `S`, `D`, `E`, `R` and `Shift`; a key can belong to only one action. For example, `"BackKeys": ["Shift"]` leaves only Shift for going back.
 
 The config is read on start and with `css_wr_reload`. Invalid values are clamped or ignored and reported in the server log.
 

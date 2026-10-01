@@ -1,5 +1,4 @@
 {
-  "chat.prefix": "{darkred}[UWR]{green}",
   "command.no_permission": "Bu komuta erişiminiz yok.",
   "command.ingame_only": "Bu komut yalnızca oyun içinde kullanılabilir.",
   "command.disabled": "Silah kısıtlamaları yapılandırmada kapalı (Enabled false).",
@@ -32,7 +31,6 @@
   "menu.limit_blocked": "Engelli (0)",
   "menu.limit_custom": "Sohbete sayı yaz",
   "menu.limit_prompt": "{0} ({1}) için limiti sohbete yazın, 1 ile 64 arası bir sayı. Sayı olmayan bir mesaj iptal eder.",
-  "menu.controls": "Hareket: {0}/{1} | Seç: {2} | Geri: {3} | İptal: {4}",
   "group.pistols": "Tabancalar",
   "group.smgs": "Hafif Makineli Tüfekler",
   "group.shotguns": "Pompalılar",

@@ -1,5 +1,4 @@
 {
-  "chat.prefix": "{darkred}[UWR]{green}",
   "command.no_permission": "No tienes acceso a este comando.",
   "command.ingame_only": "Este comando solo se puede usar dentro del juego.",
   "command.disabled": "Las restricciones de armas están desactivadas en la config (Enabled en false).",
@@ -32,7 +31,6 @@
   "menu.limit_blocked": "Bloqueada (0)",
   "menu.limit_custom": "Escribir un número en el chat",
   "menu.limit_prompt": "Escribe en el chat el límite para {0} ({1}), un número de 1 a 64. Un mensaje que no sea un número lo cancela.",
-  "menu.controls": "Mover: {0}/{1} | Seleccionar: {2} | Volver: {3} | Cancelar: {4}",
   "group.pistols": "Pistolas",
   "group.smgs": "Subfusiles",
   "group.shotguns": "Escopetas",

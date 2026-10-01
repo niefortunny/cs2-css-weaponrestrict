@@ -43,9 +43,6 @@ public sealed class UmbrellaWeaponRestrictConfig : BasePluginConfig
     [JsonPropertyName("PerPlayer")]
     public PerPlayerSettings PerPlayer { get; set; } = new();
 
-    [JsonPropertyName("Menu")]
-    public MenuSettings Menu { get; set; } = new();
-
     [JsonPropertyName("Debug")]
     public bool Debug { get; set; } = false;
 
@@ -70,35 +67,5 @@ public sealed class UmbrellaWeaponRestrictConfig : BasePluginConfig
 
         [JsonPropertyName("Rules")]
         public Dictionary<string, Dictionary<string, int>> Rules { get; set; } = new();
-    }
-
-    public sealed class MenuSettings
-    {
-        [JsonPropertyName("FreezePlayer")]
-        public bool FreezePlayer { get; set; } = true;
-
-        [JsonPropertyName("VisibleItems")]
-        public int VisibleItems { get; set; } = 5;
-
-        [JsonPropertyName("InputDebounceMilliseconds")]
-        public int InputDebounceMilliseconds { get; set; } = 140;
-
-        [JsonPropertyName("InitialInputDelayMilliseconds")]
-        public int InitialInputDelayMilliseconds { get; set; } = 500;
-
-        [JsonPropertyName("ScrollUpKeys")]
-        public List<string> ScrollUpKeys { get; set; } = ["W"];
-
-        [JsonPropertyName("ScrollDownKeys")]
-        public List<string> ScrollDownKeys { get; set; } = ["S"];
-
-        [JsonPropertyName("SelectKeys")]
-        public List<string> SelectKeys { get; set; } = ["E"];
-
-        [JsonPropertyName("BackKeys")]
-        public List<string> BackKeys { get; set; } = ["Shift", "A"];
-
-        [JsonPropertyName("CancelKeys")]
-        public List<string> CancelKeys { get; set; } = ["R"];
     }
 }

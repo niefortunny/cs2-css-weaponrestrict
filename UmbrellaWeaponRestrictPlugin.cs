@@ -1,8 +1,10 @@
 using System.Globalization;
 using System.Text;
+using CoreSettings;
 using CounterStrikeSharp.API;
 using CounterStrikeSharp.API.Core;
 using CounterStrikeSharp.API.Core.Attributes;
+using CounterStrikeSharp.API.Core.Capabilities;
 using CounterStrikeSharp.API.Core.Translations;
 using CounterStrikeSharp.API.Modules.Admin;
 using CounterStrikeSharp.API.Modules.Commands;
@@ -10,15 +12,16 @@ using CounterStrikeSharp.API.Modules.Config;
 using CounterStrikeSharp.API.Modules.Memory;
 using CounterStrikeSharp.API.Modules.Memory.DynamicFunctions;
 using CounterStrikeSharp.API.Modules.Utils;
+using MenuManager;
 using Microsoft.Extensions.Logging;
 using UmbrellaWeaponRestrict.Config;
 using UmbrellaWeaponRestrict.Core;
-using UmbrellaWeaponRestrict.Menus;
+using UmbrellaWeaponRestrict.Extensions;
 
 namespace UmbrellaWeaponRestrict;
 
 [MinimumApiVersion(376)]
-public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<UmbrellaWeaponRestrictConfig>
+public sealed partial class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<UmbrellaWeaponRestrictConfig>
 {
     private const string ConsolePrefix = "[UWR]";
     private const float NotifyDelaySeconds = 1.5f;
@@ -33,6 +36,13 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
     public override string ModuleAuthor => "Ayrton09";
     public override string ModuleDescription => "Weapon restrictions by team, weapon group and player count";
 
+    public static string Prefix = string.Empty;
+    public static string PrefixRed = string.Empty;
+
+    private ICoreSettingsApi? _coreSettings;
+    private IMenuApi? _menuApi;
+    private readonly PluginCapability<IMenuApi?> _menuCapability = new("menu:nfcore");
+
     public UmbrellaWeaponRestrictConfig Config { get; set; } = new();
 
     private readonly RestrictionState _limits = new();
@@ -46,7 +56,6 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
     private PerPlayerRules _perPlayerRules = PerPlayerRules.Empty;
     private WeaponImmunityRules _weaponImmunity = WeaponImmunityRules.Empty;
     private MapRules _mapRules = MapRules.Empty;
-    private WasdMenuService _menus = null!;
     private bool _canAcquireHooked;
     private bool _enforceQueued;
     private bool _mapStarted;
@@ -63,12 +72,10 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         config.Maps ??= new Dictionary<string, Dictionary<string, UmbrellaWeaponRestrictConfig.TeamLimitSettings>>();
         config.PerPlayer ??= new UmbrellaWeaponRestrictConfig.PerPlayerSettings();
         config.PerPlayer.Rules ??= new Dictionary<string, Dictionary<string, int>>();
-        config.Menu ??= new UmbrellaWeaponRestrictConfig.MenuSettings();
 
         config.AdminPermission = NormalizePermission(config.AdminPermission, "@css/cvar", "AdminPermission", warnings);
         config.ImmunityPermission = NormalizePermission(config.ImmunityPermission, "@css/root", "ImmunityPermission", warnings);
         config.RestrictedSound = NormalizeSoundPath(config.RestrictedSound, warnings);
-        NormalizeMenu(config.Menu, warnings);
 
         TeamLimit[] limits = CreateUnrestrictedLimits();
         HashSet<int> seen = [];
@@ -113,7 +120,6 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
 
     public override void Load(bool hotReload)
     {
-        _menus = new WasdMenuService(Config.Menu, Localizer);
         _limits.ResetBase(_configLimits);
 
         AddCommand("css_restrict", "Restrict a weapon, weapon group or all weapons.", OnRestrictCommand);
@@ -126,15 +132,12 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         AddCommand("css_wr_reload", "Reload the weapon restriction config.", OnReloadCommand);
 
         RegisterListener<Listeners.OnMapStart>(OnMapStart);
-        RegisterListener<Listeners.OnMapEnd>(OnMapEnd);
         RegisterListener<Listeners.OnClientPutInServer>(OnClientPutInServer);
         RegisterListener<Listeners.OnClientDisconnect>(OnClientDisconnect);
         RegisterListener<Listeners.OnClientDisconnectPost>(OnClientDisconnectPost);
-        RegisterListener<Listeners.OnTick>(OnTick);
 
         RegisterEventHandler<EventRoundStart>(OnRoundStart);
         RegisterEventHandler<EventPlayerTeam>(OnPlayerTeam);
-        RegisterEventHandler<EventBotTakeover>(OnBotTakeover);
 
         // CounterStrikeSharp keys listeners by delegate: sharing one would leave "say" registered
         // after an unload.
@@ -155,6 +158,19 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         });
     }
 
+    public override void OnAllPluginsLoaded(bool hotReload)
+    {
+        _coreSettings = CoreSettingsPlugin.ApiCapability.Get();
+        Prefix = _coreSettings?.Get("prefix") ?? string.Empty;
+        PrefixRed = _coreSettings?.Get("prefix_red") ?? string.Empty;
+
+        _menuApi = _menuCapability.Get();
+        if (_menuApi == null)
+        {
+            Logger.LogError("[UmbrellaWeaponRestrict] MenuManager Core not found...");
+        }
+    }
+
     public override void Unload(bool hotReload)
     {
         if (_canAcquireHooked)
@@ -162,8 +178,6 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
             VirtualFunctions.CCSPlayer_ItemServices_CanAcquireFunc.Unhook(OnCanAcquire, HookMode.Pre);
             _canAcquireHooked = false;
         }
-
-        _menus.CloseAll();
     }
 
     private void HookCanAcquire()
@@ -208,11 +222,6 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         }
     }
 
-    private void OnMapEnd()
-    {
-        _menus.CloseAll();
-    }
-
     private void OnClientPutInServer(int slot)
     {
         ResetSlot(slot);
@@ -222,17 +231,11 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
     private void OnClientDisconnect(int slot)
     {
         ResetSlot(slot);
-        _menus.Forget(slot);
     }
 
     private void OnClientDisconnectPost(int slot)
     {
         Server.NextFrame(() => RefreshPerPlayer());
-    }
-
-    private void OnTick()
-    {
-        _menus.OnTick();
     }
 
     private HookResult OnRoundStart(EventRoundStart @event, GameEventInfo info)
@@ -247,17 +250,6 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
     {
         // The event fires before the new team is applied, so count on the next frame.
         Server.NextFrame(() => RefreshPerPlayer());
-        return HookResult.Continue;
-    }
-
-    private HookResult OnBotTakeover(EventBotTakeover @event, GameEventInfo info)
-    {
-        // Keys stop reaching a menu that stays open across the pawn swap; one opened on the bot works.
-        if (@event.Userid is { IsValid: true } player)
-        {
-            _menus.Close(player);
-        }
-
         return HookResult.Continue;
     }
 
@@ -745,13 +737,14 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         {
             PrintToChat(player, limit == 0
                 ? Localizer.ForPlayer(player, "notify.blocked", weapon.DisplayName)
-                : Localizer.ForPlayer(player, "notify.limit", weapon.DisplayName, limit));
+                : Localizer.ForPlayer(player, "notify.limit", weapon.DisplayName, limit),
+                isWarning: true);
         }
     }
 
-    private void PrintToChat(CCSPlayerController player, string message)
+    private static void PrintToChat(CCSPlayerController player, string message, bool isWarning = false)
     {
-        player.PrintToChat($"{Localizer.ForPlayer(player, "chat.prefix")} {message}");
+        player.PrintToChatWithSound(message, isWarning: isWarning);
     }
 
     private void Reply(CCSPlayerController? player, CommandInfo info, string message)
@@ -965,7 +958,7 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         if (HasAdminAccess(player, info))
         {
             _pendingChatLimits.Remove(player.Slot);
-            _menus.Open(player, BuildMainMenu(player));
+            OpenMainMenu(player);
         }
     }
 
@@ -1132,7 +1125,6 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
             return;
         }
 
-        _menus.UpdateSettings(Config.Menu);
         ResetToConfig(Server.MapName);
         RefreshPerPlayer(force: true);
         QueueEnforce();
@@ -1172,137 +1164,8 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Menu
+    // Menu chat limit
     // ---------------------------------------------------------------------------------------------
-
-    /// <summary>
-    /// Menu categories: the weapon groups plus "Other" for the Zeus, which belongs to no group.
-    /// </summary>
-    private static readonly WeaponGroup[] MenuCategories = [.. WeaponCatalog.Groups, WeaponGroup.None];
-
-    /// <summary>What a team/limit screen edits: one weapon, or every weapon of a group.</summary>
-    private sealed record MenuSubject(WeaponDefinition? Weapon, WeaponGroup Group);
-
-    private sealed record PendingChatLimit(MenuSubject Subject, RestrictTeam Team, DateTime ExpiresUtc);
-
-    private WasdMenuScreen BuildMainMenu(CCSPlayerController player)
-    {
-        List<WasdMenuItem> items =
-        [
-            new WasdMenuItem
-            {
-                Label = Localizer.ForPlayer(player, "menu.groups_option"),
-                OnSelect = selected => _menus.Push(selected, BuildGroupMenu(selected))
-            }
-        ];
-
-        foreach (WeaponGroup category in MenuCategories)
-        {
-            items.Add(new WasdMenuItem
-            {
-                Label = FormatCategory(player, category),
-                Color = CategoryColor(category),
-                OnSelect = selected => _menus.Push(selected, BuildCategoryMenu(selected, category))
-            });
-        }
-
-        return new WasdMenuScreen
-        {
-            Title = Localizer.ForPlayer(player, "menu.title"),
-            Items = items
-        };
-    }
-
-    private WasdMenuScreen BuildGroupMenu(CCSPlayerController player)
-    {
-        return new WasdMenuScreen
-        {
-            Title = Localizer.ForPlayer(player, "menu.groups_title"),
-            Items = WeaponCatalog.Groups.Select(group => new WasdMenuItem
-            {
-                Label = FormatCategory(player, group),
-                Color = CategoryColor(group),
-                OnSelect = selected => _menus.Push(selected, BuildTeamMenu(selected, new MenuSubject(null, group)))
-            }).ToList()
-        };
-    }
-
-    private WasdMenuScreen BuildCategoryMenu(CCSPlayerController player, WeaponGroup category)
-    {
-        string tName = Localizer.ForPlayer(player, "team.t_short");
-        string ctName = Localizer.ForPlayer(player, "team.ct_short");
-
-        return new WasdMenuScreen
-        {
-            Title = GetGroupName(player, category),
-            Items = WeaponCatalog.InGroup(category).Select(weapon => new WasdMenuItem
-            {
-                Label = FormatWeaponLine(weapon, tName, ctName),
-                Color = CategoryColor(category),
-                OnSelect = selected => _menus.Push(selected, BuildTeamMenu(selected, new MenuSubject(weapon, category)))
-            }).ToList()
-        };
-    }
-
-    private WasdMenuScreen BuildTeamMenu(CCSPlayerController player, MenuSubject subject)
-    {
-        (RestrictTeam Team, string Key, string? Color)[] teams =
-        [
-            (RestrictTeam.Terrorist, "team.t", "#eab54f"),
-            (RestrictTeam.CounterTerrorist, "team.ct", "#8ab4ff"),
-            (RestrictTeam.Both, "team.both", null)
-        ];
-
-        return new WasdMenuScreen
-        {
-            Title = Localizer.ForPlayer(player, "menu.team_title", GetSubjectName(player, subject)),
-            Items = teams.Select(entry => new WasdMenuItem
-            {
-                Label = Localizer.ForPlayer(player, entry.Key),
-                Color = entry.Color,
-                OnSelect = selected => _menus.Push(selected, BuildLimitMenu(selected, subject, entry.Team))
-            }).ToList()
-        };
-    }
-
-    private WasdMenuScreen BuildLimitMenu(CCSPlayerController player, MenuSubject subject, RestrictTeam team)
-    {
-        List<WasdMenuItem> items =
-        [
-            new WasdMenuItem
-            {
-                Label = Localizer.ForPlayer(player, "menu.limit_unlimited"),
-                OnSelect = selected => ApplyMenuSelection(selected, subject, team, RestrictionState.Unlimited)
-            },
-            new WasdMenuItem
-            {
-                Label = Localizer.ForPlayer(player, "menu.limit_blocked"),
-                OnSelect = selected => ApplyMenuSelection(selected, subject, team, 0)
-            },
-            new WasdMenuItem
-            {
-                Label = Localizer.ForPlayer(player, "menu.limit_custom"),
-                OnSelect = selected => RequestChatLimit(selected, subject, team)
-            }
-        ];
-
-        return new WasdMenuScreen
-        {
-            Title = Localizer.ForPlayer(player, "menu.limit_title", GetSubjectName(player, subject), GetTeamName(player, team)),
-            Items = items
-        };
-    }
-
-    /// <summary>
-    /// Closes the menu and takes the limit from the admin's next chat message instead of listing every
-    /// number from 1 to 64.
-    /// </summary>
-    private void RequestChatLimit(CCSPlayerController player, MenuSubject subject, RestrictTeam team)
-    {
-        _menus.Close(player);
-        _pendingChatLimits[player.Slot] = new PendingChatLimit(subject, team, DateTime.UtcNow.AddSeconds(ChatLimitTimeoutSeconds));
-        PrintToChat(player, Localizer.ForPlayer(player, "menu.limit_prompt", GetSubjectName(player, subject), GetTeamName(player, team)));
-    }
 
     private HookResult OnSay(CCSPlayerController? player, CommandInfo info)
     {
@@ -1328,115 +1191,6 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
         }
 
         return HookResult.Handled;
-    }
-
-    private void ApplyMenuSelection(CCSPlayerController player, MenuSubject subject, RestrictTeam team, int amount)
-    {
-        if (!HasPermission(player, Config.AdminPermission))
-        {
-            _menus.Close(player);
-            PrintToChat(player, Localizer.ForPlayer(player, "command.no_permission"));
-            return;
-        }
-
-        List<WeaponDefinition> weapons = subject.Weapon != null ? [subject.Weapon] : WeaponCatalog.InGroup(subject.Group).ToList();
-        SetBaseLimits(player, weapons, team, amount, subject.Weapon?.Key ?? subject.Group.ToString().ToLowerInvariant(),
-            reader => GetSubjectName(reader, subject));
-
-        string teamName = GetTeamName(player, team);
-        PrintToChat(player, subject.Weapon != null
-            ? Localizer.ForPlayer(player, "restrict.weapon", subject.Weapon.DisplayName, teamName, amount)
-            : Localizer.ForPlayer(player, "restrict.group", GetGroupName(player, subject.Group), teamName, amount));
-
-        string? overridden = DescribePerPlayerOverride(player, weapons);
-        if (overridden != null)
-        {
-            PrintToChat(player, overridden);
-        }
-
-        // Back to the list the admin came from, rebuilt so it shows the new limits.
-        if (subject.Weapon != null)
-        {
-            _menus.Reset(player, BuildMainMenu(player), 1 + Array.IndexOf(MenuCategories, subject.Group));
-            _menus.Push(player, BuildCategoryMenu(player, subject.Group), WeaponCatalog.InGroup(subject.Group).TakeWhile(weapon => weapon != subject.Weapon).Count());
-        }
-        else
-        {
-            _menus.Reset(player, BuildMainMenu(player), 0);
-            _menus.Push(player, BuildGroupMenu(player), Array.IndexOf(MenuCategories, subject.Group));
-        }
-    }
-
-    private string FormatCategory(CCSPlayerController player, WeaponGroup group)
-    {
-        int restricted = WeaponCatalog.InGroup(group).Count(_limits.IsRestrictedForAnyTeam);
-        string name = GetGroupName(player, group);
-        return restricted == 0 ? name : $"{name} ({restricted})";
-    }
-
-    private string FormatWeaponLine(WeaponDefinition weapon, string tName, string ctName)
-    {
-        int tLimit = _limits.Get(weapon, CsTeam.Terrorist);
-        int ctLimit = _limits.Get(weapon, CsTeam.CounterTerrorist);
-
-        if (tLimit < 0 && ctLimit < 0)
-        {
-            return weapon.DisplayName;
-        }
-
-        if (tLimit >= 0 && ctLimit >= 0)
-        {
-            return $"{weapon.DisplayName}  {tName}:{tLimit} {ctName}:{ctLimit}";
-        }
-
-        return tLimit >= 0
-            ? $"{weapon.DisplayName}  {tName}:{tLimit}"
-            : $"{weapon.DisplayName}  {ctName}:{ctLimit}";
-    }
-
-    private string GetSubjectName(CCSPlayerController? player, MenuSubject subject)
-    {
-        return subject.Weapon?.DisplayName ?? GetGroupName(player, subject.Group);
-    }
-
-    private static string CategoryColor(WeaponGroup group)
-    {
-        return group switch
-        {
-            WeaponGroup.Pistols => "#7fc8ff",
-            WeaponGroup.Smgs => "#6ee7b7",
-            WeaponGroup.Shotguns => "#ffab6e",
-            WeaponGroup.Rifles => "#ff8484",
-            WeaponGroup.Snipers => "#c99bff",
-            WeaponGroup.Grenades => "#b8e05a",
-            WeaponGroup.Armor => "#a9b7c6",
-            _ => "#ff9ce0"
-        };
-    }
-
-    private string GetGroupName(CCSPlayerController? player, WeaponGroup group)
-    {
-        return Localizer.ForPlayer(player, group switch
-        {
-            WeaponGroup.Pistols => "group.pistols",
-            WeaponGroup.Smgs => "group.smgs",
-            WeaponGroup.Shotguns => "group.shotguns",
-            WeaponGroup.Rifles => "group.rifles",
-            WeaponGroup.Snipers => "group.snipers",
-            WeaponGroup.Grenades => "group.grenades",
-            WeaponGroup.Armor => "group.armor",
-            _ => "group.other"
-        });
-    }
-
-    private string GetTeamName(CCSPlayerController? player, RestrictTeam team)
-    {
-        return Localizer.ForPlayer(player, team switch
-        {
-            RestrictTeam.Terrorist => "team.t_short",
-            RestrictTeam.CounterTerrorist => "team.ct_short",
-            _ => "team.both"
-        });
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -1495,64 +1249,5 @@ public sealed class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginConfig<Umb
 
         warnings.Add($"RestrictedSound: '{value}' is not a safe sound path, the sound is disabled.");
         return string.Empty;
-    }
-
-    private static void NormalizeMenu(UmbrellaWeaponRestrictConfig.MenuSettings menu, ICollection<string> warnings)
-    {
-        menu.VisibleItems = ClampSetting(menu.VisibleItems, 3, 9, "Menu.VisibleItems", warnings);
-        menu.InputDebounceMilliseconds = ClampSetting(menu.InputDebounceMilliseconds, 50, 1000, "Menu.InputDebounceMilliseconds", warnings);
-        menu.InitialInputDelayMilliseconds = ClampSetting(menu.InitialInputDelayMilliseconds, 0, 5000, "Menu.InitialInputDelayMilliseconds", warnings);
-
-        // Same order the menu checks them in, so a key claimed twice stays with the first action.
-        HashSet<string> taken = new(StringComparer.OrdinalIgnoreCase);
-        menu.ScrollUpKeys = NormalizeKeys(menu.ScrollUpKeys, ["W"], "Menu.ScrollUpKeys", taken, warnings);
-        menu.ScrollDownKeys = NormalizeKeys(menu.ScrollDownKeys, ["S"], "Menu.ScrollDownKeys", taken, warnings);
-        menu.SelectKeys = NormalizeKeys(menu.SelectKeys, ["E"], "Menu.SelectKeys", taken, warnings);
-        menu.BackKeys = NormalizeKeys(menu.BackKeys, ["Shift", "A"], "Menu.BackKeys", taken, warnings);
-        menu.CancelKeys = NormalizeKeys(menu.CancelKeys, ["R"], "Menu.CancelKeys", taken, warnings);
-    }
-
-    private static int ClampSetting(int value, int min, int max, string name, ICollection<string> warnings)
-    {
-        int clamped = Math.Clamp(value, min, max);
-        if (clamped != value)
-        {
-            warnings.Add($"{name}: {value} is out of range ({min} to {max}), using {clamped}.");
-        }
-
-        return clamped;
-    }
-
-    private static List<string> NormalizeKeys(List<string>? keys, List<string> fallback, string name, HashSet<string> taken, ICollection<string> warnings)
-    {
-        List<string> result = [];
-        foreach (string raw in keys ?? [])
-        {
-            string key = raw?.Trim() ?? string.Empty;
-            if (!WasdMenuService.IsKnownKey(key))
-            {
-                warnings.Add($"{name}: '{raw}' is not a supported key (W, A, S, D, E, R, Shift), ignored.");
-            }
-            else if (!taken.Add(key))
-            {
-                warnings.Add($"{name}: '{key}' is already used, ignored.");
-            }
-            else
-            {
-                result.Add(key);
-            }
-        }
-
-        if (result.Count > 0)
-        {
-            return result;
-        }
-
-        List<string> free = fallback.Where(key => !taken.Contains(key)).ToList();
-        warnings.Add(free.Count > 0
-            ? $"{name}: no usable key, using {string.Join(", ", free)}."
-            : $"{name}: no usable key and its default is taken, the action has no key.");
-        taken.UnionWith(free);
-        return free;
     }
 }

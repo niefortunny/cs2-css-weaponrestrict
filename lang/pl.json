@@ -1,5 +1,4 @@
 {
-  "chat.prefix": "{darkred}[UWR]{green}",
   "command.no_permission": "Nie masz dostępu do tej komendy.",
   "command.ingame_only": "Tej komendy można użyć tylko w grze.",
   "command.disabled": "Ograniczenia broni są wyłączone w konfiguracji (Enabled ma wartość false).",
@@ -32,7 +31,6 @@
   "menu.limit_blocked": "Zablokowane (0)",
   "menu.limit_custom": "Wpisz liczbę na czacie",
   "menu.limit_prompt": "Wpisz na czacie limit dla {0} ({1}), liczbę od 1 do 64. Wiadomość, która nie jest liczbą, anuluje.",
-  "menu.controls": "Ruch: {0}/{1} | Wybierz: {2} | Wstecz: {3} | Anuluj: {4}",
   "group.pistols": "Pistolety",
   "group.smgs": "Pistolety maszynowe",
   "group.shotguns": "Strzelby",

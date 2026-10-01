@@ -1,5 +1,4 @@
 {
-  "chat.prefix": "{darkred}[UWR]{green}",
   "command.no_permission": "你无权使用此命令。",
   "command.ingame_only": "此命令只能在游戏中使用。",
   "command.disabled": "武器限制已在配置中禁用（Enabled 为 false）。",
@@ -32,7 +31,6 @@
   "menu.limit_blocked": "已封锁 (0)",
   "menu.limit_custom": "在聊天中输入数字",
   "menu.limit_prompt": "请在聊天中输入 {0}（{1}）的限制，1 到 64 之间的数字。发送非数字的消息即取消。",
-  "menu.controls": "移动：{0}/{1} | 选择：{2} | 返回：{3} | 取消：{4}",
   "group.pistols": "手枪",
   "group.smgs": "冲锋枪",
   "group.shotguns": "霰弹枪",
