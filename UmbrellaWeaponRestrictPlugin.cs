@@ -36,10 +36,8 @@ public sealed partial class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginCo
     public override string ModuleAuthor => "Ayrton09";
     public override string ModuleDescription => "Weapon restrictions by team, weapon group and player count";
 
-    public static string Prefix = string.Empty;
-    public static string PrefixRed = string.Empty;
-
-    private ICoreSettingsApi? _coreSettings;
+    public static string Prefix => CoreSettingsPlugin.ApiCapability.Get()?.Get("prefix") ?? string.Empty;
+    public static string PrefixRed => CoreSettingsPlugin.ApiCapability.Get()?.Get("prefix_red") ?? string.Empty;
     private IMenuApi? _menuApi;
     private readonly PluginCapability<IMenuApi?> _menuCapability = new("menu:nfcore");
 
@@ -160,9 +158,8 @@ public sealed partial class UmbrellaWeaponRestrictPlugin : BasePlugin, IPluginCo
 
     public override void OnAllPluginsLoaded(bool hotReload)
     {
-        _coreSettings = CoreSettingsPlugin.ApiCapability.Get();
-        Prefix = _coreSettings?.Get("prefix") ?? string.Empty;
-        PrefixRed = _coreSettings?.Get("prefix_red") ?? string.Empty;
+        if (CoreSettingsPlugin.ApiCapability.Get() is null)
+            Logger.LogError("[UmbrellaWeaponRestrict] CoreSettings API unavailable — is the plugin loaded?");
 
         _menuApi = _menuCapability.Get();
         if (_menuApi == null)
